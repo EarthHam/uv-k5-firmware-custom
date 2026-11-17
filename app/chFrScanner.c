@@ -1,6 +1,9 @@
 
 #include "app/app.h"
 #include "app/chFrScanner.h"
+#ifdef ENABLE_UART
+	#include "app/uart.h"
+#endif
 #include "functions.h"
 #include "misc.h"
 #include "settings.h"
@@ -151,6 +154,10 @@ void CHFRSCANNER_Stop(void)
 	}
 
 	RADIO_SetupRegisters(true);
+#ifdef ENABLE_UART
+	// Do not report every scan step; report only the frequency kept when scan stops.
+	UART_NotifyFrequencyChanges();
+#endif
 	gUpdateDisplay = true;
 }
 

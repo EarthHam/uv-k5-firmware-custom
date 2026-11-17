@@ -21,6 +21,11 @@
 
 bool UART_IsCommandAvailable(void);
 void UART_HandleCommand(void);
-
+void UART_InitCATState(void);
+void UART_NotifyFrequencyChanges(void);
+void UART_TimeSlice10ms(void);
+#ifdef ENABLE_REMOTE_CONTROL
+void UART_NotifyRemoteDisplayChanges(void);
 #endif
 
+#endif

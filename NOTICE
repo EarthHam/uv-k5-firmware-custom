@@ -1,0 +1,47 @@
+UV-K5 V1 custom firmware
+========================
+
+This product includes software originally developed by Dual Tachyon
+for the Quansheng UV-K5 open-source firmware project:
+
+  https://github.com/DualTachyon/uv-k5-firmware
+
+This product includes derived work and contributions from the UV-K5
+custom firmware community, including OneOfEleven, fagci and Egzumer:
+
+  https://github.com/OneOfEleven/uv-k5-firmware-custom
+  https://github.com/fagci/uv-k5-firmware-fagci-mod
+  https://github.com/egzumer/uv-k5-firmware-custom
+
+Third-party components
+----------------------
+
+This product includes CMSIS Version 5 by Arm, licensed under the
+Apache License, Version 2.0.
+
+This product includes the embedded printf implementation by Marco
+Paland, licensed under the MIT License.
+
+License and endorsement notice
+------------------------------
+
+This NOTICE file is provided for attribution purposes only and does not
+modify the terms of any applicable license. The main firmware is licensed
+under the Apache License, Version 2.0. Attribution does not imply endorsement
+by any contributor or project named above.
+
+Radio Remote maintenance fork
+-----------------------------
+
+This independently maintained derivative adds Radio Remote CAT V3 integration
+and maintains its own build and release workflow. See README.md for the scope
+of the modifications. Original copyright and attribution notices are retained.
+
+Compiler runtime libraries
+--------------------------
+
+Firmware is built with ARM GNU Toolchain 13.3.Rel1. The toolchain-supplied
+license collection, including runtime library terms and GCC Runtime Library
+Exception, is included in binary packages as
+THIRD_PARTY_LICENSES/ARM-GNU-Toolchain.txt. This does not change the main
+firmware license.
