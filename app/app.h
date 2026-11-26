@@ -22,8 +22,18 @@
 #include "functions.h"
 #include "frequencies.h"
 #include "radio.h"
+#ifdef ENABLE_REMOTE_CONTROL
+#include "driver/keyboard.h"
+#endif
 
 void     APP_EndTransmission(void);
+#ifdef ENABLE_UART
+bool     APP_IsCATPowerOn(void);
+void     APP_SetCATPower(bool On);
+#endif
+#ifdef ENABLE_REMOTE_CONTROL
+void     APP_ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld);
+#endif
 void     APP_StartListening(FUNCTION_Type_t function);
 uint32_t APP_SetFreqByStepAndLimits(VFO_Info_t *pInfo, int8_t direction, uint32_t lower, uint32_t upper);
 uint32_t APP_SetFrequencyByStep(VFO_Info_t *pInfo, int8_t direction);
@@ -32,4 +42,3 @@ void     APP_TimeSlice10ms(void);
 void     APP_TimeSlice500ms(void);
 
 #endif
-

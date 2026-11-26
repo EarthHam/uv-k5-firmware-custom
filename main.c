@@ -31,6 +31,12 @@
 
 #include "app/app.h"
 #include "app/dtmf.h"
+#ifdef ENABLE_REMOTE_CONTROL
+	#include "app/remote.h"
+#endif
+#ifdef ENABLE_UART
+	#include "app/uart.h"
+#endif
 #include "bsp/dp32g030/gpio.h"
 #include "bsp/dp32g030/syscon.h"
 
@@ -82,6 +88,9 @@ void Main(void)
 	UART_Init();
 	UART_Send(UART_Version, strlen(UART_Version));
 #endif
+#ifdef ENABLE_REMOTE_CONTROL
+	REMOTE_Init();
+#endif
 
 	// Not implementing authentic device checks
 
@@ -102,6 +111,10 @@ void Main(void)
 	RADIO_SelectVfos();
 
 	RADIO_SetupRegisters(true);
+
+#ifdef ENABLE_UART
+	UART_InitCATState();
+#endif
 
 	for (unsigned int i = 0; i < ARRAY_SIZE(gBatteryVoltages); i++)
 		BOARD_ADC_GetBatteryInfo(&gBatteryVoltages[i], &gBatteryCurrent);

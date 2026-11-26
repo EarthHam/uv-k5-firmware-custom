@@ -40,6 +40,9 @@
 #ifdef ENABLE_UART
 	#include "app/uart.h"
 #endif
+#ifdef ENABLE_REMOTE_CONTROL
+	#include "app/remote.h"
+#endif
 #include "ARMCM0.h"
 #include "audio.h"
 #include "board.h"
@@ -75,8 +78,86 @@
 static bool flagSaveVfo;
 static bool flagSaveSettings;
 static bool flagSaveChannel;
+#ifdef ENABLE_UART
+static bool gCATPowerOn = true;
+#endif
 
 static void ProcessKey(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld);
+
+static bool APP_IsAnyPttPressed(void)
+{
+#ifdef ENABLE_REMOTE_CONTROL
+	return gPttIsPressed || REMOTE_IsPttPressed();
+#else
+	return gPttIsPressed;
+#endif
+}
+
+#ifdef ENABLE_UART
+bool APP_IsCATPowerOn(void)
+{
+	return gCATPowerOn;
+}
+
+void APP_SetCATPower(const bool On)
+{
+	if (gCATPowerOn == On)
+		return;
+
+	if (!On)
+	{
+#ifdef ENABLE_REMOTE_CONTROL
+		REMOTE_ReleaseAll();
+#endif
+		if (gCurrentFunction == FUNCTION_TRANSMIT)
+		{
+			GENERIC_Key_PTT(false);
+			if (gCurrentFunction == FUNCTION_TRANSMIT)
+				FUNCTION_Select(FUNCTION_FOREGROUND);
+		}
+
+		if (SCANNER_IsScanning())
+			SCANNER_Stop();
+		if (gScanStateDir != SCAN_OFF)
+			CHFRSCANNER_Stop();
+#ifdef ENABLE_FMRADIO
+		if (gFmRadioMode)
+			FM_TurnOff();
+#endif
+
+		gFlagPrepareTX = false;
+		gSchedulePowerSave = false;
+		gPowerSaveCountdownExpired = false;
+		GUI_SelectNextDisplay(DISPLAY_MAIN);
+		FUNCTION_Select(FUNCTION_POWER_SAVE);
+		AUDIO_AudioPathOff();
+		gEnableSpeaker = false;
+		BACKLIGHT_TurnOff();
+		BACKLIGHT_SetBrightness(0);
+		ST7565_SetPower(false);
+		gUpdateDisplay = false;
+		gUpdateStatus = false;
+		gCATPowerOn = false;
+		return;
+	}
+
+	gCATPowerOn = true;
+	gSchedulePowerSave = false;
+	gPowerSaveCountdownExpired = false;
+	FUNCTION_Select(FUNCTION_FOREGROUND);
+	RADIO_SelectVfos();
+	RADIO_SetupRegisters(true);
+	GUI_SelectNextDisplay(DISPLAY_MAIN);
+	GUI_DisplayScreen();
+	ST7565_SetPower(true);
+	BACKLIGHT_TurnOn();
+	gUpdateDisplay = true;
+	gUpdateStatus = true;
+#ifdef ENABLE_REMOTE_CONTROL
+	REMOTE_ForceDisplayRefresh();
+#endif
+}
+#endif
 
 
 void (*ProcessKeysFunctions[])(KEY_Code_t Key, bool bKeyPressed, bool bKeyHeld) = {
@@ -753,7 +834,7 @@ static void HandleVox(void)
 		else if (gVoxStopCountdown_10ms == 0)
 			gVOX_NoiseDetected = false;
 
-		if (gCurrentFunction == FUNCTION_TRANSMIT && !gPttIsPressed && !gVOX_NoiseDetected) {
+		if (gCurrentFunction == FUNCTION_TRANSMIT && !APP_IsAnyPttPressed() && !gVOX_NoiseDetected) {
 			if (gFlagEndTransmission) {
 				//if (gCurrentFunction != FUNCTION_FOREGROUND)
 					FUNCTION_Select(FUNCTION_FOREGROUND);
@@ -795,6 +876,11 @@ static void HandleVox(void)
 
 void APP_Update(void)
 {
+#ifdef ENABLE_UART
+	if (!APP_IsCATPowerOn())
+		return;
+#endif
+
 #ifdef ENABLE_VOICE
 	if (gFlagPlayQueuedVoice) {
 			AUDIO_PlayQueuedVoice();
@@ -828,9 +914,9 @@ void APP_Update(void)
 #endif
 
 #ifdef ENABLE_VOICE
-	if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed && gVoiceWriteIndex == 0)
+	if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !APP_IsAnyPttPressed() && gVoiceWriteIndex == 0)
 #else
-	if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !gPttIsPressed)
+	if (!SCANNER_IsScanning() && gScanStateDir != SCAN_OFF && gScheduleScanListen && !APP_IsAnyPttPressed())
 #endif
 	{	// scanning
 		CHFRSCANNER_ContinueScanning();
@@ -856,7 +942,7 @@ void APP_Update(void)
 		&& gEeprom.DUAL_WATCH != DUAL_WATCH_OFF
 		&& gScheduleDualWatch
 		&& gScanStateDir == SCAN_OFF
-		&& !gPttIsPressed
+		&& !APP_IsAnyPttPressed()
 		&& gCurrentFunction != FUNCTION_POWER_SAVE
 #ifdef ENABLE_VOICE
 		&& gVoiceWriteIndex == 0
@@ -894,8 +980,11 @@ void APP_Update(void)
 #endif
 
 	if (gSchedulePowerSave) {
-		if (gPttIsPressed
+		if (APP_IsAnyPttPressed()
 			|| gKeyBeingHeld
+#ifdef ENABLE_REMOTE_CONTROL
+			|| REMOTE_IsKeyPressed()
+#endif
 			|| gEeprom.BATTERY_SAVE == 0
 			|| gScanStateDir != SCAN_OFF
 			|| gCssBackgroundScan
@@ -995,8 +1084,11 @@ static void CheckKeys(void)
 		{	// PTT released or serial comms config in progress
 			if (++gPttDebounceCounter >= 3 || SerialConfigInProgress())	    // 30ms
 			{	// stop transmitting
-				ProcessKey(KEY_PTT, false, false);
 				gPttIsPressed = false;
+#ifdef ENABLE_REMOTE_CONTROL
+				if (!REMOTE_IsPttPressed())
+#endif
+					ProcessKey(KEY_PTT, false, false);
 				if (gKeyReading1 != KEY_INVALID)
 					gPttWasReleased = true;
 			}
@@ -1011,7 +1103,10 @@ static void CheckKeys(void)
 			boot_counter_10ms   = 0;
 			gPttDebounceCounter = 0;
 			gPttIsPressed       = true;
-			ProcessKey(KEY_PTT, true, false);
+#ifdef ENABLE_REMOTE_CONTROL
+			if (!REMOTE_IsPttPressed())
+#endif
+				ProcessKey(KEY_PTT, true, false);
 		}
 	}
 	else
@@ -1091,22 +1186,53 @@ void APP_TimeSlice10ms(void)
 	gFlashLightBlinkCounter++;
 
 #ifdef ENABLE_BOOT_BEEPS
-	if (boot_counter_10ms > 0 && (boot_counter_10ms % 25) == 0) {
+	if (
+#ifdef ENABLE_UART
+		APP_IsCATPowerOn() &&
+#endif
+		boot_counter_10ms > 0 && (boot_counter_10ms % 25) == 0) {
 		AUDIO_PlayBeep(BEEP_880HZ_40MS_OPTIONAL);
 	}
 #endif
 
 #ifdef ENABLE_AM_FIX
-	if (gRxVfo->Modulation == MODULATION_AM) {
+	if (
+#ifdef ENABLE_UART
+		APP_IsCATPowerOn() &&
+#endif
+		gRxVfo->Modulation == MODULATION_AM) {
 		AM_fix_10ms(gEeprom.RX_VFO);
 	}
 #endif
 
 #ifdef ENABLE_UART
-	if (UART_IsCommandAvailable()) {
+	while (true) {
+		bool CommandAvailable;
 		__disable_irq();
-		UART_HandleCommand();
+		CommandAvailable = UART_IsCommandAvailable();
 		__enable_irq();
+
+		if (!CommandAvailable)
+			break;
+
+		UART_HandleCommand();
+	}
+
+#ifdef ENABLE_REMOTE_CONTROL
+	UART_TimeSlice10ms();
+	REMOTE_TimeSlice10ms();
+	UART_NotifyRemoteDisplayChanges();
+#endif
+
+	if (!APP_IsCATPowerOn())
+	{
+		const bool PttPressed = !GPIO_CheckBit(&GPIOC->DATA, GPIOC_PIN_PTT);
+		const bool KeyPressed = KEYBOARD_Poll() != KEY_INVALID;
+
+		if (!PttPressed && !KeyPressed)
+			return;
+
+		APP_SetCATPower(true);
 	}
 #endif
 
@@ -1440,7 +1566,7 @@ void APP_TimeSlice500ms(void)
 		}
 	}
 
-	if (!gPttIsPressed && gVFOStateResumeCountdown_500ms > 0 && --gVFOStateResumeCountdown_500ms == 0) {
+	if (!APP_IsAnyPttPressed() && gVFOStateResumeCountdown_500ms > 0 && --gVFOStateResumeCountdown_500ms == 0) {
 			RADIO_SetVfoState(VFO_STATE_NORMAL);
 #ifdef ENABLE_FMRADIO
 		if (gFmRadioMode && !FUNCTION_IsRx()) {
@@ -1858,6 +1984,12 @@ Skip:
 
 		if (gMonitor)
 			ACTION_Monitor();   // 1of11
+
+#ifdef ENABLE_UART
+		// Notify the host only after the user operation and radio reconfiguration
+		// have completed. The notifier compares both VFOs and sends only changes.
+		UART_NotifyFrequencyChanges();
+#endif
 	}
 
 	if (gFlagRefreshSetting) {
@@ -1886,3 +2018,13 @@ Skip:
 
 	gUpdateDisplay = true;
 }
+
+#ifdef ENABLE_REMOTE_CONTROL
+void APP_ProcessKey(const KEY_Code_t Key, const bool bKeyPressed, const bool bKeyHeld)
+{
+	// The remote source must not retrigger or release PTT while the physical PTT is held.
+	if (Key == KEY_PTT && gPttIsPressed)
+		return;
+	ProcessKey(Key, bKeyPressed, bKeyHeld);
+}
+#endif

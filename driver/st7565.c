@@ -24,6 +24,9 @@
 #include "driver/st7565.h"
 #include "driver/system.h"
 #include "misc.h"
+#ifdef ENABLE_REMOTE_CONTROL
+	#include "app/remote.h"
+#endif
 
 uint8_t gStatusLine[LCD_WIDTH];
 uint8_t gFrameBuffer[FRAME_LINES][LCD_WIDTH];
@@ -54,6 +57,10 @@ void ST7565_BlitFullScreen(void)
 		DrawLine(0, line+1, gFrameBuffer[line], LCD_WIDTH);
 	}
 	SPI_ToggleMasterMode(&SPI0->CR, true);
+#ifdef ENABLE_REMOTE_CONTROL
+	for (uint8_t Page = 1; Page < REMOTE_DISPLAY_PAGE_COUNT; Page++)
+		REMOTE_MarkDisplayPage(Page);
+#endif
 }
 
 void ST7565_BlitLine(unsigned line)
@@ -62,6 +69,9 @@ void ST7565_BlitLine(unsigned line)
 	ST7565_WriteByte(0x40);    // start line ?
 	DrawLine(0, line+1, gFrameBuffer[line], LCD_WIDTH);
 	SPI_ToggleMasterMode(&SPI0->CR, true);
+#ifdef ENABLE_REMOTE_CONTROL
+	REMOTE_MarkDisplayPage((uint8_t)line + 1U);
+#endif
 }
 
 void ST7565_BlitStatusLine(void)
@@ -70,6 +80,9 @@ void ST7565_BlitStatusLine(void)
 	ST7565_WriteByte(0x40);    // start line ?
 	DrawLine(0, 0, gStatusLine, LCD_WIDTH);
 	SPI_ToggleMasterMode(&SPI0->CR, true);
+#ifdef ENABLE_REMOTE_CONTROL
+	REMOTE_MarkDisplayPage(0);
+#endif
 }
 
 void ST7565_FillScreen(uint8_t value)
@@ -173,6 +186,37 @@ void ST7565_Init(void)
 	SPI_ToggleMasterMode(&SPI0->CR, true);
 
 	ST7565_FillScreen(0x00);
+}
+
+void ST7565_SetPower(const bool On)
+{
+	SPI_ToggleMasterMode(&SPI0->CR, false);
+
+	if (!On)
+	{
+		ST7565_WriteByte(ST7565_CMD_DISPLAY_ON_OFF | 0);
+		ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b000);
+	}
+	else
+	{
+		ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b011);
+		SYSTEM_DelayMs(1);
+		ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b110);
+		SYSTEM_DelayMs(1);
+		for (uint8_t i = 0; i < 4; i++)
+			ST7565_WriteByte(ST7565_CMD_POWER_CIRCUIT | 0b111);
+		SYSTEM_DelayMs(40);
+		ST7565_WriteByte(ST7565_CMD_DISPLAY_ON_OFF | 1);
+	}
+
+	SPI_WaitForUndocumentedTxFifoStatusBit();
+	SPI_ToggleMasterMode(&SPI0->CR, true);
+
+	if (On)
+	{
+		ST7565_BlitStatusLine();
+		ST7565_BlitFullScreen();
+	}
 }
 
 void ST7565_FixInterfGlitch(void)
